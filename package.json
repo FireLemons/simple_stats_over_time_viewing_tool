@@ -1,0 +1,16 @@
+{
+  "name": "simple_stats_over_time_viewing_tool",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "shenyang128@proton.me",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "http-server": "^14.1.1"
+  }
+}
