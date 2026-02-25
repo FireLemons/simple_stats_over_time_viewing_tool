@@ -14,17 +14,51 @@
     let messageDisplayParagraph
     const logLevels = new Set(['fail', 'info', 'warn'])
 
-    function cleanData () {
+    function cleanData (uncleanedArray) {
       // TODO
+      // toss out anything that's not an object, toss out any values in objects that aren't numeric
     }
 
     function initializeJSON5Hint () {
       const json5Hint = document.querySelector('#data-input a')
 
       json5Hint.addEventListener("click", function () {
-        messageUser('json5 means you can use javascript syntax to define your json', 'info')
+        messageUser('json5 means you can use javascript object literal syntax to define your json. It\'s backwards compatible with standard json syntax', 'info')
+      })
+    }
+
+    function initializeJSONEditor () {
+      jsonEditor = ace.edit('json-editor')
+      jsonEditor.setValue(`[
+  {
+    a: 0,
+    b: 0,
+    c: 1
+  },
+  {
+    a: 1,
+    b: 4,
+    c: 3
+  },
+  {
+    a: 2,
+    b: 2,
+    c: 9
+  },
+]
+`)
+      jsonEditor.setOptions({
+        maxLines: Infinity,
+        minLines: 5,
+        mode: "ace/mode/json5",
+        tabSize: 2,
+        theme: "ace/theme/dracula",
+        useSoftTabs: true
       })
 
+      jsonEditor.session.on('change', function() {
+        processInput()
+      })
     }
 
     function messageUser (message, level) {
@@ -66,46 +100,33 @@
       }
     }
 
+    function processInput () {
+      const userInput = jsonEditor.getValue()
+      const parsedUserInput = parseInput(userInput)
+
+      if (!validateUserInputIsArray(parsedUserInput)) {
+        return
+      }
+    }
+
     function updateGraph () {
       // TODO
+    }
+
+    function validateUserInputIsArray (parsedUserInput) {
+      if (!Array.isArray(parsedUserInput)) {
+        messageUser('Parsed JSON is not an array', 'fail')
+
+        return false
+      }
+
+      return true
     }
 
     window.addEventListener('load', function () {
       messageDisplayParagraph = document.getElementById('message')
       initializeJSON5Hint()
-
-      jsonEditor = ace.edit('json-editor')
-      jsonEditor.setValue(`[
-  {
-    a: 0,
-    b: 0,
-    c: 1
-  },
-  {
-    a: 1,
-    b: 4,
-    c: 3
-  },
-  {
-    a: 2,
-    b: 2,
-    c: 9
-  },
-]
-`)
-      jsonEditor.setOptions({
-        maxLines: Infinity,
-        minLines: 5,
-        mode: "ace/mode/json5",
-        tabSize: 2,
-        theme: "ace/theme/dracula",
-        useSoftTabs: true
-      })
-
-      jsonEditor.session.on('change', function() {
-        const userInput = jsonEditor.getValue()
-        parseInput(userInput)
-      })
+      initializeJSONEditor()
     })
   </script>
   <style>
