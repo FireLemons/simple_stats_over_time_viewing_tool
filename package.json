@@ -11,7 +11,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "ace-builds": "^1.43.6",
     "chart.js": "^4.5.1",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "json5": "^2.2.3"
   }
 }

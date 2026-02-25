@@ -4,9 +4,10 @@
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <title>Timeline</title>
   <script src="js/chart.umd.js"></script>
+  <script src="js/json5.js"></script>
   <script>
     let jsonInputTextarea
-    let displayedMessage
+    let messageDisplayParagraph
     const logLevels = new Set(['fail', 'info', 'warn'])
 
     function cleanData () {
@@ -20,12 +21,36 @@
         return
       }
 
-      displayedMessage.className = level
-      displayedMessage.innerHTML = message
+      if (!(messageDisplayParagraph instanceof HTMLElement)) {
+        console.error('reference to message display element is not instance of HTMLElement. Value is instead:')
+        console.error(messageDisplayParagraph)
+
+        return
+      }
+
+      messageDisplayParagraph.className = level
+      messageDisplayParagraph.innerHTML = message
     }
 
     function parseInput () {
-      // TODO
+      if (!(jsonInputTextarea instanceof HTMLElement)) {
+        messageUser('Failed to access element containing json', 'fail')
+
+        console.error('reference to json editing element is not instance of HTMLElement. Value is instead:')
+        console.error(jsonInputTextarea)
+
+        return
+      }
+
+      try {
+        const parsedObject = JSON5.parse(jsonInputTextarea.value)
+
+        messageUser('', 'info')
+        
+        return parsedObject
+      } catch (e) {
+        messageUser('failed to parse input as json5', 'fail')
+      }
     }
 
     function updateGraph () {
@@ -33,13 +58,17 @@
     }
 
     window.addEventListener('load', function () {
-      displayedMessage = document.getElementById('message')
+      messageDisplayParagraph = document.getElementById('message')
       jsonInputTextarea = document.querySelector('#data-input textarea')
 
       const json5Hint = document.querySelector('#data-input a')
 
       json5Hint.addEventListener("click", function () {
-        messageUser('json5 means you can use javascript syntax for your json', 'info')
+        messageUser('json5 means you can use javascript syntax to define your json', 'info')
+      })
+
+      jsonInputTextarea.addEventListener('input', function (event) {
+        parseInput()
       })
 
       jsonInputTextarea.style.height = jsonInputTextarea.scrollHeight + 'px'
