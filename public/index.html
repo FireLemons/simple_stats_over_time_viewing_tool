@@ -1,10 +1,115 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <script src="chart.umd.js"></script>
-    <title>Timeline</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <title>Timeline</title>
+  <script src="js/chart.umd.js"></script>
+  <script>
+    let jsonInputTextarea
+    let displayedMessage
+    const logLevels = new Set(['fail', 'info', 'warn'])
+
+    function cleanData () {
+      // TODO
+    }
+
+    function messageUser (message, level) {
+      if (!logLevels.has(level)) {
+        console.error(`unsupported log level ${level}`)
+
+        return
+      }
+
+      displayedMessage.className = level
+      displayedMessage.innerHTML = message
+    }
+
+    function parseInput () {
+      // TODO
+    }
+
+    function updateGraph () {
+      // TODO
+    }
+
+    window.addEventListener('load', function () {
+      displayedMessage = document.getElementById('message')
+      jsonInputTextarea = document.querySelector('#data-input textarea')
+
+      const json5Hint = document.querySelector('#data-input a')
+
+      json5Hint.addEventListener("click", function () {
+        messageUser('json5 means you can use javascript syntax for your json', 'info')
+      })
+
+      jsonInputTextarea.style.height = jsonInputTextarea.scrollHeight + 'px'
+    })
+  </script>
+  <style>
+    body {
+      background-color: #1b5e20;
+      margin: 0;
+    }
+
+    p {
+      color: white;
+      padding: 0 1em;
+    }
+
+    #app {
+      display: inline-block;
+
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #data-input textarea {
+      width: -moz-available;
+      width: -webkit-fill-available;
+    }
+
+    #data-input a {
+      cursor: help;
+      color: #4caf50;
+    }
+
+    #message.fail {
+      color: #ef9a9a;
+    }
+
+    #message.warn {
+      color: #ffa726;
+    }
+  </style>
 </head>
   <body>
-    
+    <div id="app">
+      <div id="chart">
+
+      </div>
+      <div id="data-input">
+        <p>Enter an array of objects where all values are numeric in <a href="#">json5</a> format</p>
+        <p id="message"></p>
+        <textarea>
+[
+  {
+    a: 0,
+    b: 0,
+    c: 1
+  },
+  {
+    a: 1,
+    b: 4,
+    c: 3
+  },
+  {
+    a: 2,
+    b: 2,
+    c: 9
+  },
+]
+        </textarea>
+      </div>
+    </div>
   </body>
 </html>
