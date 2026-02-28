@@ -15,8 +15,33 @@
     const logLevels = new Set(['fail', 'info', 'warn'])
 
     function cleanData (uncleanedArray) {
-      // TODO
-      // toss out anything that's not an object, toss out any values in objects that aren't numeric
+      let hasPruned = false
+
+      for (let i = uncleanedArray.length - 1; i >= 0; i--) {
+        const currentElement = uncleanedArray[i]
+
+        if (!(typeof currentElement === 'object')) {
+          console.warn(`Element at index ${i} is not an object. Removing`)
+          uncleanedArray.splice(i, 1)
+          hasPruned = true
+        } else {
+          for (let [key, value] of Object.entries(currentElement)) {
+            if (typeof value !== 'number') {
+              console.warn(`Value of key "${key}" of object at index ${i} is not a number. Removing`)
+              delete currentElement[key]
+              hasPruned = true
+            }
+          }
+
+          if (Object.keys(currentElement).length === 0) {
+            console.warn(`Element at index ${i} is an empty object. Removing`)
+            uncleanedArray.splice(i, 1)
+            hasPruned = true
+          }
+        }
+      }
+
+      return hasPruned
     }
 
     function initializeJSON5Hint () {
@@ -44,7 +69,7 @@
     a: 2,
     b: 2,
     c: 9
-  },
+  }
 ]
 `)
       jsonEditor.setOptions({
@@ -101,11 +126,21 @@
     }
 
     function processInput () {
+      console.log('Processing input')
       const userInput = jsonEditor.getValue()
       const parsedUserInput = parseInput(userInput)
 
       if (!validateUserInputIsArray(parsedUserInput)) {
         return
+      }
+
+      if (cleanData(parsedUserInput)) {
+        if (parsedUserInput.length === 0) {
+          messageUser('Pruning off invalid input data resulted in no usable data', 'fail')
+          return
+        } else {
+          messageUser('Some parts of the object were invalid so they were removed. Open the dev console for details.', 'warn')
+        }
       }
     }
 
@@ -116,6 +151,10 @@
     function validateUserInputIsArray (parsedUserInput) {
       if (!Array.isArray(parsedUserInput)) {
         messageUser('Parsed JSON is not an array', 'fail')
+
+        return false
+      } else if (parsedUserInput.length === 0){
+        messageUser('Parsed JSON is an empty array', 'fail')
 
         return false
       }
