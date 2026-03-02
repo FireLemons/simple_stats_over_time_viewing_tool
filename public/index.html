@@ -10,11 +10,13 @@
   <script src="js/chart.umd.js"></script>
   <script src="js/json5.js"></script>
   <script>
-    let jsonEditor
-    let messageDisplayParagraph
     const logLevels = new Set(['fail', 'info', 'warn'])
 
-    function cleanData (uncleanedArray) {
+    let chart
+    let jsonEditor
+    let messageDisplayParagraph
+
+    function cleanInputData (uncleanedArray) {
       let hasPruned = false
 
       for (let i = uncleanedArray.length - 1; i >= 0; i--) {
@@ -44,6 +46,56 @@
       return hasPruned
     }
 
+    function formatCleanedChartData (cleanedData) {
+      const completeObject = getObjectContainingAllKeys(cleanedData)
+      const groupedValuesContainer =  mergeObjectsPure(completeObject, cleanedData[0])
+
+      for (let [key, value] of Object.entries(groupedValuesContainer)) {
+        groupedValuesContainer[key] = [value]
+      }
+
+      cleanedData.slice(1).reduce((accumulator, object) => {
+        const currentCompleteObject = mergeObjectsPure(completeObject, object)
+
+        for (let key in currentCompleteObject) {
+          accumulator[key].push(currentCompleteObject[key])
+        }
+
+        return accumulator
+      }, groupedValuesContainer)
+
+      const dataFormattedAsDatasets = []
+
+      for (let key in groupedValuesContainer) {
+        dataFormattedAsDatasets.push({
+          label: key,
+          data: groupedValuesContainer[key]
+        })
+      }
+
+      return dataFormattedAsDatasets
+    }
+
+    function getDefaultChartLabels (labelCount) {
+      return Array(labelCount).fill(labelCount)
+    }
+
+    function getObjectContainingAllKeys (objectArray) {
+      return objectArray.reduce((accumulator, object) => {
+        Object.keys(object).forEach(key => accumulator[key] = null)
+        return accumulator
+      }, {})
+    }
+
+    function initializeChart () {
+      const ctx = document.getElementById('chart').getContext('2d')
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { datasets: [] }
+      })
+    }
+
     function initializeJSON5Hint () {
       const json5Hint = document.querySelector('#data-input a')
 
@@ -54,7 +106,8 @@
 
     function initializeJSONEditor () {
       jsonEditor = ace.edit('json-editor')
-      jsonEditor.setValue(`[
+      jsonEditor.setValue(
+`[
   {
     a: 0,
     b: 0,
@@ -67,8 +120,7 @@
   },
   {
     a: 2,
-    b: 2,
-    c: 9
+    b: 2
   }
 ]
 `)
@@ -84,6 +136,10 @@
       jsonEditor.session.on('change', function() {
         processInput()
       })
+    }
+
+    function mergeObjectsPure (...objects) {
+      return Object.assign({}, ...objects)
     }
 
     function messageUser (message, level) {
@@ -134,7 +190,7 @@
         return
       }
 
-      if (cleanData(parsedUserInput)) {
+      if (cleanInputData(parsedUserInput)) {
         if (parsedUserInput.length === 0) {
           messageUser('Pruning off invalid input data resulted in no usable data', 'fail')
           return
@@ -142,10 +198,14 @@
           messageUser('Some parts of the object were invalid so they were removed. Open the dev console(ctrl + shift + k on most browsers) for details.', 'warn')
         }
       }
+
+      updateChart(formatCleanedChartData(parsedUserInput))
     }
 
-    function updateGraph () {
-      // TODO
+    function updateChart (newData) {
+      chart.data.labels = getDefaultChartLabels(newData.length)
+      chart.data.datasets = newData
+      chart.update()
     }
 
     function validateUserInputIsArray (parsedUserInput) {
@@ -166,6 +226,8 @@
       messageDisplayParagraph = document.getElementById('message')
       initializeJSON5Hint()
       initializeJSONEditor()
+      initializeChart()
+      processInput()
     })
   </script>
   <style>
@@ -184,6 +246,13 @@
 
       width: 100vw;
       height: 100vh;
+    }
+
+    #chart-container {
+      background-color: #a5d6a7;
+      display: flex;
+      justify-content: center;
+      max-height: 60vh;
     }
 
     #data-input textarea {
@@ -207,8 +276,8 @@
 </head>
   <body>
     <div id="app">
-      <div id="chart">
-
+      <div id="chart-container">
+        <canvas id="chart"></canvas>
       </div>
       <div id="data-input">
         <p>Enter an array of objects where all values are numeric in <a href="#">json5</a> format</p>
