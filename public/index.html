@@ -10,6 +10,7 @@
   <script src="js/chart.umd.js"></script>
   <script src="js/json5.js"></script>
   <script>
+    const chartDefaultColor = '#212121'
     const logLevels = new Set(['fail', 'info', 'warn'])
 
     let chart
@@ -17,14 +18,26 @@
     let messageDisplayParagraph
 
     function cleanInputData (uncleanedArray) {
+      const cleanedArray = structuredClone(uncleanedArray)
       let hasPruned = false
+      const labelArray = []
 
-      for (let i = uncleanedArray.length - 1; i >= 0; i--) {
-        const currentElement = uncleanedArray[i]
+      for (let i = cleanedArray.length - 1; i >= 0; i--) {
+        let currentElement = cleanedArray[i]
+        let currentLabel = ''
 
-        if (!(typeof currentElement === 'object')) {
-          console.warn(`Element at index ${i} is not an object. Removing`)
-          uncleanedArray.splice(i, 1)
+        if (Array.isArray(currentElement)) {
+          if (currentElement < 2 || !(typeof currentElement[0] === 'string' || currentElement[0] instanceof String) || typeof currentElement[1] !== 'object') {
+            console.warn(`Element at index ${i} is not the correct format of a labal, datapoint tuple. Label datapoint tuples are in the form ['string', { keys: 0, ... }]`)
+          } else {
+            currentLabel = currentElement[0]
+            cleanedArray[i] = currentElement = currentElement[1]
+          }
+        }
+
+        if (typeof currentElement !== 'object') {
+          console.warn(`Element at index ${i} did not contain a datapoint object. Removing`)
+          cleanedArray.splice(i, 1)
           hasPruned = true
         } else {
           for (let [key, value] of Object.entries(currentElement)) {
@@ -37,13 +50,19 @@
 
           if (Object.keys(currentElement).length === 0) {
             console.warn(`Element at index ${i} is an empty object. Removing`)
-            uncleanedArray.splice(i, 1)
+            cleanedArray.splice(i, 1)
             hasPruned = true
+          } else {
+            labelArray.push(currentLabel)
           }
         }
       }
 
-      return hasPruned
+      return {
+        cleanedArray,
+        hasPruned,
+        labelArray: labelArray.reverse()
+      }
     }
 
     function formatCleanedChartData (cleanedData) {
@@ -77,7 +96,7 @@
     }
 
     function getDefaultChartLabels (labelCount) {
-      return Array(labelCount).fill(labelCount)
+      return Array(labelCount).fill('')
     }
 
     function getObjectContainingAllKeys (objectArray) {
@@ -92,7 +111,28 @@
 
       chart = new Chart(ctx, {
         type: 'line',
-        data: { datasets: [] }
+        data: { datasets: [] },
+        options: {
+          color: chartDefaultColor,
+          scales: {
+            x: {
+              grid: {
+                color: '#757575'
+              },
+              ticks: { 
+                color: chartDefaultColor
+              }
+            },
+            y: {
+              grid: {
+                color: '#757575'
+              },
+              ticks: {
+                color: chartDefaultColor
+              }
+            }
+          }
+        }
       })
     }
 
@@ -108,11 +148,11 @@
       jsonEditor = ace.edit('json-editor')
       jsonEditor.setValue(
 `[
-  {
+  ['label', {
     a: 0,
     b: 0,
     c: 1
-  },
+  }],
   {
     a: 1,
     b: 4,
@@ -190,8 +230,10 @@
         return
       }
 
-      if (cleanInputData(parsedUserInput)) {
-        if (parsedUserInput.length === 0) {
+      const cleanDataResult = cleanInputData(parsedUserInput)
+
+      if (cleanDataResult.hasPruned) {
+        if (cleanDataResult.cleanedArray.length === 0) {
           messageUser('Pruning off invalid input data resulted in no usable data', 'fail')
           return
         } else {
@@ -199,11 +241,11 @@
         }
       }
 
-      updateChart(formatCleanedChartData(parsedUserInput))
+      updateChart(formatCleanedChartData(cleanDataResult.cleanedArray), cleanDataResult.labelArray)
     }
 
-    function updateChart (newData) {
-      chart.data.labels = getDefaultChartLabels(newData.length)
+    function updateChart (newData, newLabels) {
+      chart.data.labels = newLabels
       chart.data.datasets = newData
       chart.update()
     }
@@ -280,7 +322,7 @@
         <canvas id="chart"></canvas>
       </div>
       <div id="data-input">
-        <p>Enter an array of objects where all values are numeric in <a href="#">json5</a> format</p>
+        <p>Enter an array of either an object where all values are numeric or a tuple of a label followed by the object where all values are numeric in <a href="#">json5</a> format</p>
         <p id="message"></p>
         <div id="json-editor">
         </div>
