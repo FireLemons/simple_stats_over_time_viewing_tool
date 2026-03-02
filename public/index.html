@@ -1,328 +1,401 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <link rel="icon" href="/favicon.ico" type="image/x-icon">
-  <title>Timeline</title>
-  <script src="js/ace.js"></script>
-  <script src="js/mode-json5.js"></script>
-  <script src="js/theme-dracula.js"></script>
+  <head>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <title>Timeline</title>
+    <script src="js/ace.js"></script>
+    <script src="js/mode-json5.js"></script>
+    <script src="js/theme-dracula.js"></script>
 
-  <script src="js/chart.umd.js"></script>
-  <script src="js/json5.js"></script>
-  <script>
-    const chartDefaultColor = '#212121'
-    const logLevels = new Set(['fail', 'info', 'warn'])
+    <script src="js/chart.umd.js"></script>
+    <script src="js/json5.js"></script>
+    <script>
+      const logLevels = new Set(['fail', 'info', 'warn'])
 
-    let chart
-    let jsonEditor
-    let messageDisplayParagraph
+      let chart
+      let jsonEditor
+      let messageDisplayParagraph
 
-    function cleanInputData (uncleanedArray) {
-      const cleanedArray = structuredClone(uncleanedArray)
-      let hasPruned = false
-      const labelArray = []
+      function cleanInputData(uncleanedArray) {
+        const cleanedArray = []
+        let hasPruned = false
+        const labelArray = []
+        const uncleanedArrayCopy = structuredClone(uncleanedArray)
 
-      for (let i = cleanedArray.length - 1; i >= 0; i--) {
-        let currentElement = cleanedArray[i]
-        let currentLabel = ''
+        for (let i = 0; i < uncleanedArrayCopy.length; i++) {
+          let currentElement = uncleanedArrayCopy[i]
 
-        if (Array.isArray(currentElement)) {
-          if (currentElement < 2 || !(typeof currentElement[0] === 'string' || currentElement[0] instanceof String) || typeof currentElement[1] !== 'object') {
-            console.warn(`Element at index ${i} is not the correct format of a labal, datapoint tuple. Label datapoint tuples are in the form ['string', { keys: 0, ... }]`)
-          } else {
-            currentLabel = currentElement[0]
-            cleanedArray[i] = currentElement = currentElement[1]
+          try {
+            if (isArray(currentElement)) {
+              const { cleanedObject, didCleaningPrune, label } = cleanInputDataLabelAndPointTuple(currentElement)
+
+              cleanedArray.push(cleanedObject)
+              hasPruned = hasPruned || didCleaningPrune
+              labelArray.push(label)
+            } else if (isObject(currentElement)) {
+              const { cleanedObject, didCleaningPrune } = cleanInputDataPoint(currentElement)
+
+              cleanedArray.push(cleanedObject)
+              hasPruned = hasPruned || didCleaningPrune
+              labelArray.push('')
+            } else {
+              throw new TypeError(`Element is not an array or object`)
+            }
+          } catch (error) {
+            console.warn(`Failed to process element at index ${i} from user input. Removing`)
+            console.warn(error)
           }
         }
 
-        if (typeof currentElement !== 'object') {
-          console.warn(`Element at index ${i} did not contain a datapoint object. Removing`)
-          cleanedArray.splice(i, 1)
-          hasPruned = true
-        } else {
-          for (let [key, value] of Object.entries(currentElement)) {
-            if (typeof value !== 'number') {
-              console.warn(`Value of key "${key}" of object at index ${i} is not a number. Removing`)
-              delete currentElement[key]
-              hasPruned = true
+        return {
+          cleanedArray: cleanedArray,
+          hasPruned,
+          labelArray: labelArray
+        }
+      }
+
+      function cleanInputDataPoint (uncleanedObject, objectIndex) {
+        let hasPruned = false
+        const cleanedObject = structuredClone(uncleanedObject)
+
+        for (let [key, value] of Object.entries(cleanedObject)) {
+          if (typeof value !== 'number') {
+            console.warn(`Value of key "${key}" of object at index ${objectIndex} is not a number. Removing`)
+            delete cleanedObject[key]
+            hasPruned = true
+          }
+        }
+
+        if (Object.keys(cleanedObject).length === 0) {
+          throw new Error('Object contains no usable key value pairs')
+        }
+
+        return {
+          cleanedObject,
+          hasPruned
+        }
+      }
+
+      function cleanInputDataLabelAndPointTuple (uncleanedTuple) {
+        if (uncleanedTuple < 2 || !isString(uncleanedTuple[0]) || !isObject(uncleanedTuple[1])) {
+          throw new Error(`Element is not the correct format of a label, datapoint tuple. Label datapoint tuples are in the form ['string', { keys: 0, ... }]`)
+        }
+
+        const { cleanedObject, hasPruned } = cleanInputDataPoint(uncleanedTuple[1])
+
+        return {
+          cleanedObject,
+          hasPruned,
+          label: uncleanedTuple[0]
+        }
+      }
+
+      function formatCleanedChartData(cleanedData) {
+        typeCheckParamIsArray('cleanedData', cleanedData)
+
+        const completeObject = getObjectContainingAllKeys(cleanedData)
+        const groupedValuesContainer = mergeObjectsPure(completeObject, cleanedData[0])
+
+        for (let [key, value] of Object.entries(groupedValuesContainer)) {
+          groupedValuesContainer[key] = [value]
+        }
+
+        cleanedData.slice(1).reduce((accumulator, object) => {
+          const currentCompleteObject = mergeObjectsPure(completeObject, object)
+
+          for (let key in currentCompleteObject) {
+            accumulator[key].push(currentCompleteObject[key])
+          }
+
+          return accumulator
+        }, groupedValuesContainer)
+
+        const dataFormattedAsDatasets = []
+
+        for (let key in groupedValuesContainer) {
+          dataFormattedAsDatasets.push({
+            label: key,
+            data: groupedValuesContainer[key]
+          })
+        }
+
+        return dataFormattedAsDatasets
+      }
+
+      function getDefaultChartLabels(labelCount) {
+        return Array(labelCount).fill('')
+      }
+
+      function getObjectContainingAllKeys(objectArray) {
+        typeCheckParamIsArray('objectArray', objectArray)
+
+        return objectArray.reduce((accumulator, object) => {
+          Object.keys(object).forEach(key => accumulator[key] = null)
+          return accumulator
+        }, {})
+      }
+
+      function initializeChart() {
+        const ctx = document.getElementById('chart').getContext('2d')
+        const chartTextColor = '#212121'
+        const chartLineColor = '#757575'
+
+        const chartAxisColorSettings = {
+          grid: {
+            color: chartLineColor
+          },
+          ticks: {
+            color: chartTextColor
+          }
+        }
+
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: { datasets: [] },
+          options: {
+            color: chartTextColor,
+            maintainAspectRatio: false,
+            scales: {
+              x: chartAxisColorSettings,
+              y: chartAxisColorSettings
             }
           }
-
-          if (Object.keys(currentElement).length === 0) {
-            console.warn(`Element at index ${i} is an empty object. Removing`)
-            cleanedArray.splice(i, 1)
-            hasPruned = true
-          } else {
-            labelArray.push(currentLabel)
-          }
-        }
-      }
-
-      return {
-        cleanedArray,
-        hasPruned,
-        labelArray: labelArray.reverse()
-      }
-    }
-
-    function formatCleanedChartData (cleanedData) {
-      const completeObject = getObjectContainingAllKeys(cleanedData)
-      const groupedValuesContainer =  mergeObjectsPure(completeObject, cleanedData[0])
-
-      for (let [key, value] of Object.entries(groupedValuesContainer)) {
-        groupedValuesContainer[key] = [value]
-      }
-
-      cleanedData.slice(1).reduce((accumulator, object) => {
-        const currentCompleteObject = mergeObjectsPure(completeObject, object)
-
-        for (let key in currentCompleteObject) {
-          accumulator[key].push(currentCompleteObject[key])
-        }
-
-        return accumulator
-      }, groupedValuesContainer)
-
-      const dataFormattedAsDatasets = []
-
-      for (let key in groupedValuesContainer) {
-        dataFormattedAsDatasets.push({
-          label: key,
-          data: groupedValuesContainer[key]
         })
       }
 
-      return dataFormattedAsDatasets
-    }
+      function initializeJSON5Hint() {
+        const json5Hint = document.querySelector('#data-input a')
 
-    function getDefaultChartLabels (labelCount) {
-      return Array(labelCount).fill('')
-    }
+        json5Hint.addEventListener("click", function () {
+          messageUser('json5 means you can use javascript object literal syntax to define your json. It\'s backwards compatible with standard json syntax', 'info')
+        })
+      }
 
-    function getObjectContainingAllKeys (objectArray) {
-      return objectArray.reduce((accumulator, object) => {
-        Object.keys(object).forEach(key => accumulator[key] = null)
-        return accumulator
-      }, {})
-    }
-
-    function initializeChart () {
-      const ctx = document.getElementById('chart').getContext('2d')
-
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: { datasets: [] },
-        options: {
-          color: chartDefaultColor,
-          scales: {
-            x: {
-              grid: {
-                color: '#757575'
-              },
-              ticks: { 
-                color: chartDefaultColor
-              }
-            },
-            y: {
-              grid: {
-                color: '#757575'
-              },
-              ticks: {
-                color: chartDefaultColor
-              }
-            }
-          }
-        }
-      })
-    }
-
-    function initializeJSON5Hint () {
-      const json5Hint = document.querySelector('#data-input a')
-
-      json5Hint.addEventListener("click", function () {
-        messageUser('json5 means you can use javascript object literal syntax to define your json. It\'s backwards compatible with standard json syntax', 'info')
-      })
-    }
-
-    function initializeJSONEditor () {
-      jsonEditor = ace.edit('json-editor')
-      jsonEditor.setValue(
+      function initializeJSONEditor() {
+        jsonEditor = ace.edit('json-editor')
+        jsonEditor.setValue(
 `[
-  ['label', {
+  {
     a: 0,
     b: 0,
     c: 1
-  }],
-  {
+  },
+  ['label',{
     a: 1,
     b: 4,
     c: 3
-  },
+  }],
   {
     a: 2,
     b: 2
   }
 ]
 `)
-      jsonEditor.setOptions({
-        maxLines: Infinity,
-        minLines: 5,
-        mode: "ace/mode/json5",
-        tabSize: 2,
-        theme: "ace/theme/dracula",
-        useSoftTabs: true
-      })
+        jsonEditor.setOptions({
+          maxLines: Infinity,
+          minLines: 5,
+          mode: "ace/mode/json5",
+          tabSize: 2,
+          theme: "ace/theme/dracula",
+          useSoftTabs: true
+        })
 
-      jsonEditor.session.on('change', function() {
-        processInput()
-      })
-    }
-
-    function mergeObjectsPure (...objects) {
-      return Object.assign({}, ...objects)
-    }
-
-    function messageUser (message, level) {
-      if (!logLevels.has(level)) {
-        console.error(`unsupported log level ${level}`)
-
-        return
+        jsonEditor.session.on('change', function () {
+          processInput()
+        })
       }
 
-      if (!(messageDisplayParagraph instanceof HTMLElement)) {
-        console.error('reference to message display element is not instance of HTMLElement. Value is instead:')
-        console.error(messageDisplayParagraph)
-
-        return
+      function isArray(value) {
+        return Array.isArray(value)
       }
 
-      messageDisplayParagraph.className = level
-      messageDisplayParagraph.innerHTML = message
-    }
-
-    function parseInput (userInput) {
-      if (!(typeof userInput === 'string' || userInput instanceof String)) {
-        messageUser('Failed to recongnize json input as a string', 'fail')
-
-        console.error('JSON input is not a sting. Value is instead:')
-        console.error(userInput)
-
-        return
+      function isObject(value) {
+        return typeof value === 'object'
       }
 
-      try {
-        const parsedObject = JSON5.parse(userInput)
-
-        messageUser('', 'info')
-
-        return parsedObject
-      } catch (e) {
-        messageUser('failed to parse input as json5', 'fail')
-      }
-    }
-
-    function processInput () {
-      console.log('Processing input')
-      const userInput = jsonEditor.getValue()
-      const parsedUserInput = parseInput(userInput)
-
-      if (!validateUserInputIsArray(parsedUserInput)) {
-        return
+      function isString(value) {
+        return typeof value === 'string' || value instanceof String
       }
 
-      const cleanDataResult = cleanInputData(parsedUserInput)
+      function mergeObjectsPure(...objects) {
+        return Object.assign({}, ...objects)
+      }
 
-      if (cleanDataResult.hasPruned) {
-        if (cleanDataResult.cleanedArray.length === 0) {
-          messageUser('Pruning off invalid input data resulted in no usable data', 'fail')
+      function messageUser(message, level) {
+        typeCheckParamIsString('level', level)
+
+        if (!logLevels.has(level)) {
+          console.error(`unsupported log level ${level}`)
+
           return
-        } else {
-          messageUser('Some parts of the object were invalid so they were removed. Open the dev console(ctrl + shift + k on most browsers) for details.', 'warn')
+        }
+
+        if (!(messageDisplayParagraph instanceof HTMLElement)) {
+          console.error('reference to message display element is not instance of HTMLElement. Value is instead:')
+          console.error(messageDisplayParagraph)
+
+          return
+        }
+
+        messageDisplayParagraph.className = level
+        messageDisplayParagraph.innerHTML = message
+      }
+
+      function parseInput(userInput) {
+        if (!isString(userInput)) {
+          messageUser('Failed to recongnize json input as a string', 'fail')
+
+          console.error('JSON input is not a sting. Value is instead:')
+          console.error(userInput)
+
+          return
+        }
+
+        try {
+          const parsedObject = JSON5.parse(userInput)
+
+          messageUser('', 'info')
+
+          return parsedObject
+        } catch (e) {
+          messageUser('failed to parse input as json5', 'fail')
         }
       }
 
-      updateChart(formatCleanedChartData(cleanDataResult.cleanedArray), cleanDataResult.labelArray)
-    }
+      function processInput() {
+        console.log('Processing input')
+        const userInput = jsonEditor.getValue()
+        const parsedUserInput = parseInput(userInput)
 
-    function updateChart (newData, newLabels) {
-      chart.data.labels = newLabels
-      chart.data.datasets = newData
-      chart.update()
-    }
+        if (!validateUserInputIsArray(parsedUserInput)) {
+          return
+        }
 
-    function validateUserInputIsArray (parsedUserInput) {
-      if (!Array.isArray(parsedUserInput)) {
-        messageUser('Parsed JSON is not an array', 'fail')
+        const cleanDataResult = cleanInputData(parsedUserInput)
 
-        return false
-      } else if (parsedUserInput.length === 0){
-        messageUser('Parsed JSON is an empty array', 'fail')
+        if (cleanDataResult.hasPruned) {
+          if (cleanDataResult.cleanedArray.length === 0) {
+            messageUser('Pruning off invalid input data resulted in no usable data', 'fail')
+            return
+          } else {
+            messageUser('Some parts of the object were invalid so they were removed. Open the dev console(ctrl + shift + k on most browsers) for details.', 'warn')
+          }
+        }
 
-        return false
+        updateChart(formatCleanedChartData(cleanDataResult.cleanedArray), cleanDataResult.labelArray)
       }
 
-      return true
-    }
+      function typeCheckParamIsArray(paramName, value) {
+        if (!isArray(value)) {
+          console.error(`Type of ${paramName} is ${typeof value}`)
+          console.error(`${paramName}:`)
+          console.error(value)
+          throw new TypeError(`Param ${paramName} must be an array`)
+        }
+      }
 
-    window.addEventListener('load', function () {
-      messageDisplayParagraph = document.getElementById('message')
-      initializeJSON5Hint()
-      initializeJSONEditor()
-      initializeChart()
-      processInput()
-    })
-  </script>
-  <style>
-    body {
-      background-color: #1b5e20;
-      margin: 0;
-    }
+      function typeCheckParamIsObject(paramName, value) {
+        if (!isObject(value)) {
+          console.error(`Type of ${paramName} is ${typeof value}`)
+          console.error(`${paramName}:`)
+          console.error(value)
+          throw new TypeError(`Param ${paramName} must be an object`)
+        }
+      }
 
-    p {
-      color: white;
-      padding: 0 1em;
-    }
+      function typeCheckParamIsString(paramName, value) {
+        if (!isString(value)) {
+          console.error(`Type of ${paramName} is ${typeof value}`)
+          console.error(`${paramName}:`)
+          console.error(value)
+          throw new TypeError(`Param ${paramName} must be an object`)
+        }
+      }
 
-    #app {
-      display: inline-block;
+      function updateChart(newData, newLabels) {
+        typeCheckParamIsArray('newLabels', newLabels)
 
-      width: 100vw;
-      height: 100vh;
-    }
+        console.log(JSON.stringify(newData, null, 2))
+        chart.data.labels = newLabels
+        chart.data.datasets = newData
+        chart.update()
+      }
 
-    #chart-container {
-      background-color: #a5d6a7;
-      display: flex;
-      justify-content: center;
-      max-height: 60vh;
-    }
+      function validateUserInputIsArray(parsedUserInput) {
+        if (!isArray(parsedUserInput)) {
+          messageUser('Parsed JSON is not an array', 'fail')
 
-    #data-input textarea {
-      width: -moz-available;
-      width: -webkit-fill-available;
-    }
+          return false
+        } else if (parsedUserInput.length === 0) {
+          messageUser('Parsed JSON is an empty array', 'fail')
 
-    #data-input a {
-      cursor: help;
-      color: #4caf50;
-    }
+          return false
+        }
 
-    #message.fail {
-      color: #ef9a9a;
-    }
+        return true
+      }
 
-    #message.warn {
-      color: #ffa726;
-    }
-  </style>
-</head>
+      window.addEventListener('load', function () {
+        messageDisplayParagraph = document.getElementById('message')
+        initializeJSON5Hint()
+        initializeJSONEditor()
+        initializeChart()
+        processInput()
+      })
+    </script>
+    <style>
+      body {
+        background-color: #1b5e20;
+        margin: 0;
+      }
+
+      p {
+        color: white;
+        padding: 0 1em;
+      }
+
+      #app {
+        display: inline-block;
+
+        width: 100vw;
+        height: 100vh;
+      }
+
+      #chart-container {
+        background-color: #a5d6a7;
+        display: flex;
+        justify-content: center;
+        height: 50vh;
+      }
+
+      #data-input textarea {
+        width: -moz-available;
+        width: -webkit-fill-available;
+      }
+
+      #data-input a {
+        cursor: help;
+        color: #4caf50;
+      }
+
+      #message.fail {
+        color: #ef9a9a;
+      }
+
+      #message.warn {
+        color: #ffa726;
+      }
+    </style>
+  </head>
+
   <body>
     <div id="app">
       <div id="chart-container">
         <canvas id="chart"></canvas>
       </div>
       <div id="data-input">
-        <p>Enter an array of either an object where all values are numeric or a tuple of a label followed by the object where all values are numeric in <a href="#">json5</a> format</p>
+        <p>Enter an array of either an object where all values are numeric or a tuple of a label followed by the object
+          where all values are numeric in <a href="#">json5</a> format</p>
         <p id="message"></p>
         <div id="json-editor">
         </div>
